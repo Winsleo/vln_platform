@@ -1,0 +1,51 @@
+# Python 编译文件
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# 项目特定目录
+results/
+checkpoints/
+hf_cache/
+# 日志文件
+*.log
+wandb/
+
+# 临时文件
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 环境变量文件
+.env
+.env.local
+
+# Docker 相关
+.dockerignore
+
+# 数据文件
+data/
+*.h5
+*.hdf5
+*.pickle
+*.pkl
+*.json
+# 模型权重文件（如果有其他位置的模型文件）
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt

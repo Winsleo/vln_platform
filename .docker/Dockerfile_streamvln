@@ -1,0 +1,24 @@
+ARG BASE_IMAGE=pytorch/pytorch:2.1.2-cuda12.1-cudnn8-devel
+FROM $BASE_IMAGE
+
+WORKDIR /opt
+RUN apt-get update && apt-get install -y --no-install-recommends git libjpeg-dev libglm-dev \
+libgl1-mesa-glx libegl1-mesa-dev mesa-utils xorg-dev freeglut3-dev libxcb-keysyms1
+RUN cat >/usr/share/glvnd/egl_vendor.d/10_nvidia.json <<'EOF'
+{
+  "file_format_version": "1.0.0",
+  "ICD": { "library_path": "libEGL_nvidia.so.0" }
+}
+EOF
+RUN pip install "numpy<2" "opencv-python<4.8"
+ENV CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+RUN git clone --branch v0.2.4 https://github.com/facebookresearch/habitat-sim.git \
+&& cd habitat-sim && pip install --no-cache-dir -r requirements.txt \
+&& python setup.py install --bullet --headless --with-cuda && cd ..
+RUN git clone --branch v0.2.4 https://github.com/facebookresearch/habitat-lab.git \
+&& cd habitat-lab && pip install --no-cache-dir -e habitat-lab \
+&& pip install --no-cache-dir -e habitat-baselines
+
+RUN git clone https://github.com/InternRobotics/StreamVLN.git \
+&& cd StreamVLN && pip install --no-cache-dir -r requirements.txt \
+&& pip install --no-cache-dir "protobuf==3.20.1"

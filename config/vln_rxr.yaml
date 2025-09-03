@@ -1,0 +1,72 @@
+# @package _global_
+
+defaults:
+  - /habitat: habitat_config_base
+  - /habitat/task: vln_r2r  # 使用基础VLN任务配置
+  - /habitat/simulator/agents@habitat.simulator.agents.main_agent: rgbd_agent
+  - /habitat/dataset/vln: mp3d_r2r  # 基础数据集配置，我们会覆盖
+  - /habitat/task/lab_sensors:
+    - gps_sensor
+    - compass_sensor
+  - _self_
+
+habitat:
+  environment:
+    max_episode_steps: 500
+    iterator_options:
+      max_scene_repeat_steps: 50000
+      shuffle: False
+  simulator:
+    agents:
+      main_agent:
+        sim_sensors:
+          rgb_sensor:
+            width: 640
+            height: 480
+            hfov: 79
+          depth_sensor:
+            width: 640
+            height: 480
+            hfov: 79
+            min_depth: 0.0
+            max_depth: 10.0
+    forward_step_size: 0.25
+    turn_angle: 15
+    habitat_sim_v0:
+      gpu_device_id: 0
+  task:
+    measurements:
+      distance_to_goal:
+        type: DistanceToGoal
+        distance_to: POINT
+      success:
+        type: Success
+        success_distance: 3.0
+      spl:
+        type: SPL
+      oracle_success:
+        type: OracleSuccess
+      oracle_navigation_error:
+        type: OracleNavigationError
+      collisions:
+        type: Collisions
+        
+  dataset:
+    type: RxRVLN-v1
+    split: val_seen
+    scenes_dir: data/scene_datasets/
+    data_path: data/datasets/rxr/{split}/{split}_{role}.json.gz
+
+# RxR特有的配置 - 使用独立的配置节避免Habitat配置冲突
+rxr:
+  # 角色配置: 可选 ["guide"], ["follower"], ["guide", "follower"], 或 ["*"]
+  roles: ["guide", "follower"]
+  # 语言配置: 可选 ["en-US"], ["en-IN"], ["hi-IN"], ["te-IN"], 或 ["*"]
+  languages: ["en-US"]  # 加载所有语言
+  # 场景过滤: 可选具体场景列表或 ["*"]
+  content_scenes: ["*"]  # 加载所有场景
+  # 集数过滤: 可选具体episode ID列表或 ["*"]
+  episodes_allowed: ["*"]  # 加载所有episodes
+  # 分布式训练配置 (可选)
+  # num_chunks: 1
+  # chunk_idx: 0

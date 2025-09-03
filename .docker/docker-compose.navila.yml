@@ -1,0 +1,6 @@
+# docker-compose.custom.yml
+# 使用方法: docker-compose -f docker-compose.yml -f docker-compose.custom.yml up
+services:
+  desktop:
+    image: navila:latest
+    container_name: navila

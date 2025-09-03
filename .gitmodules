@@ -1,0 +1,3 @@
+[submodule "StreamVLN"]
+	path = StreamVLN
+	url = https://github.com/InternRobotics/StreamVLN.git
