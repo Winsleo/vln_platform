@@ -87,15 +87,22 @@ class BaseProcessor(abc.ABC):
     def decode(
         self,
         generated_ids: torch.Tensor,
+        input_ids: Optional[torch.Tensor] = None,
         *,
         skip_special_tokens: bool = True,
         clean_up_tokenization_spaces: bool = False,
     ) -> List[str]:
         """Decode generated token ids to strings.
         """
+        if input_ids is not None:
+            generated_ids_trimmed = [
+                out_ids[len(in_ids) :] for in_ids, out_ids in zip(input_ids, generated_ids)
+            ]
+        else:
+            generated_ids_trimmed = generated_ids
         if getattr(self, 'tokenizer', None) is not None:
             return self.tokenizer.batch_decode(
-                generated_ids,  # type: ignore[arg-type]
+                generated_ids_trimmed,  # type: ignore[arg-type]
                 skip_special_tokens=skip_special_tokens,
                 clean_up_tokenization_spaces=clean_up_tokenization_spaces,
             )
@@ -104,7 +111,7 @@ class BaseProcessor(abc.ABC):
             raise RuntimeError('No available decoder found on processor/tokenizer')
 
         return self.processor.batch_decode(
-            generated_ids,  # type: ignore[arg-type]
+            generated_ids_trimmed,  # type: ignore[arg-type]
             skip_special_tokens=skip_special_tokens,
             clean_up_tokenization_spaces=clean_up_tokenization_spaces,
         )

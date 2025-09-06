@@ -17,7 +17,7 @@ RUN git clone --branch v0.2.4 https://github.com/facebookresearch/habitat-sim.gi
 && python setup.py install --bullet --headless --with-cuda && cd ..
 RUN git clone --branch v0.2.4 https://github.com/facebookresearch/habitat-lab.git \
 && cd habitat-lab && pip install --no-cache-dir -e habitat-lab \
-&& pip install --no-cache-dir -e habitat-baselines
+&& pip install --no-cache-dir -e habitat-baselines && cd ..
 
 RUN git clone https://github.com/InternRobotics/StreamVLN.git \
 && cd StreamVLN && pip install --no-cache-dir -r requirements.txt \

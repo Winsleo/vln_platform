@@ -1,12 +1,42 @@
 """Base agent class: uses unified Processor to complete all preprocessing."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union, Tuple
-
+from typing import List, Dict, Any, Union, Optional, Tuple
+from dataclasses import dataclass
 import torch
 from transformers import PreTrainedModel
 
 from .processors import BaseProcessor
+
+
+@dataclass
+class AgentConfig:
+    """Configuration for creating a navigation agent."""
+    model_path: str
+    agent_type: str
+    model_max_length: int = 1024
+    device: Optional[Union[str, int, torch.device]] = None
+    project_root: Optional[str] = None
+    agent_params: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        if not self.model_path:
+            raise ValueError("model_path is required")
+        
+        # Initialize agent_params if None
+        if self.agent_params is None:
+            self.agent_params = {}
+    
+    def get_agent_param(self, key: str, default: Any = None) -> Any:
+        """Get an agent-specific parameter."""
+        return self.agent_params.get(key, default)
+    
+    def set_agent_param(self, key: str, value: Any) -> None:
+        """Set an agent-specific parameter."""
+        if self.agent_params is None:
+            self.agent_params = {}
+        self.agent_params[key] = value
 
 
 class BaseAgent(ABC):
@@ -15,12 +45,18 @@ class BaseAgent(ABC):
     - Only responsible for calling the model and organizing I/O;
     - All data preprocessing is handled by Processor: processor.prepare / processor.decode.
     """
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Return the name of the agent."""
+        raise NotImplementedError
 
-    def __init__(self, model_path, *args, **kwargs):
-        self.model, self.processor = self.load_model_and_processor(model_path=model_path, *args, **kwargs)
+    def __init__(self, config: AgentConfig, *args, **kwargs):
+        self.device = config.device
+        self.model, self.processor = self.load_model_and_processor(config=config, *args, **kwargs)
 
     @abstractmethod
-    def load_model_and_processor(self, model_path: str, **kwargs) -> Tuple[PreTrainedModel, BaseProcessor]:
+    def load_model_and_processor(self, config: AgentConfig, **kwargs) -> Tuple[PreTrainedModel, BaseProcessor]:
         """Load model and processor, implemented by specific agents."""
         raise NotImplementedError
 
@@ -65,8 +101,10 @@ class BaseAgent(ABC):
         """Reset environment-related state (if model requires)."""
         raise NotImplementedError
 
-    def to(self, device: str | int | torch.device):
+    def to(self, device: Union[str, int, torch.device]):
+        """Move the model to the specified device."""
         self.model.to(device)
+        self.device = device
 
     def eval(self):
         self.model.eval()

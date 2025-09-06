@@ -23,6 +23,28 @@ class Qwen25VLProcessor(BaseProcessor):
         processor: Optional[Any] = None,
     ) -> None:
         super().__init__(processor=processor)
+        chat_template = (
+            "{% set image_count = namespace(value=0) %}"
+            "{% set video_count = namespace(value=0) %}"
+            "{% for message in messages %}"
+            "<|im_start|>{{ message['role'] }}\n"
+            "{% if message['content'] is string %}{{ message['content'] }}<|im_end|>\n"
+            "{% else %}{% for content in message['content'] %}"
+            "{% if content['type'] == 'image' or 'image' in content or 'image_url' in content %}"
+            "{% set image_count.value = image_count.value + 1 %}"
+            "{% if add_vision_id %}Picture {{ image_count.value }}: {% endif %}"
+            "<|vision_start|><|image_pad|><|vision_end|>"
+            "{% elif content['type'] == 'video' or 'video' in content %}"
+            "{% set video_count.value = video_count.value + 1 %}"
+            "{% if add_vision_id %}Video {{ video_count.value }}: {% endif %}"
+            "<|vision_start|><|video_pad|><|vision_end|>"
+            "{% elif 'text' in content %}{{ content['text'] }}{% endif %}"
+            "{% endfor %}<|im_end|>\n"
+            "{% endif %}{% endfor %}"
+            "{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}"
+        )
+        self.tokenizer.chat_template = chat_template
+        self.processor.tokenizer.chat_template = chat_template
 
     def prepare_from_inputs(
         self,
@@ -103,9 +125,6 @@ class Qwen25VLProcessor(BaseProcessor):
             TensorDict ready for model.generate()
         """
         messages = input_dict.get('messages', input_dict.get('text', None))
-        if messages is None:
-            raise ValueError('messages or text is required')
-        
         text_batch, padding = self.process_messages(messages, padding=padding, add_generation_prompt=add_generation_prompt)
         image_inputs = None
         video_inputs = None

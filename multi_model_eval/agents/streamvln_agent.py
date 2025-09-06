@@ -13,7 +13,7 @@ import transformers
 from transformers import BitsAndBytesConfig
 from transformers.image_utils import to_numpy_array
 from .processors import BaseProcessor
-from .base_agent import BaseAgent
+from .base_agent import BaseAgent, AgentConfig
 from utility import detect_best_attention_implementation, get_world_size
 from streamvln.utils.utils import (dict_to_cuda,
                                     DEFAULT_IMAGE_TOKEN,
@@ -32,7 +32,6 @@ class StreamVLNProcessor(BaseProcessor):
     - Use key 'inputs' in output dictionary (required by StreamVLN's generate interface).
     - Handle all input preprocessing for RGB, depth, pose, intrinsic parameters, etc.
     """
-
     def __init__(self, tokenizer, image_processor):
         super().__init__(tokenizer=tokenizer, image_processor=image_processor)
 
@@ -225,11 +224,21 @@ class StreamVLNProcessor(BaseProcessor):
 
 class StreamVLNAgent(BaseAgent):
     """StreamVLN agent implementation based on the BaseAgent."""
+    @property
+    def name(self) -> str:
+        return "streamvln"
 
-    def __init__(self, model_path, *args, **kwargs):
+    def __init__(self, config: AgentConfig, *args, **kwargs):
         """Initialize and load model and processor using model path."""
-        super().__init__(model_path, *args, **kwargs)
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.config = config
+        
+        # Extract parameters from config
+        params = config.agent_params or {}
+        self.num_frames = params.get('num_frames', 8)
+        self.num_future_steps = params.get('num_future_steps', 4)
+        self.num_history = params.get('num_history', 8)
+
+        super().__init__(config, *args, **kwargs)
         
         prompt = f"<video>\nYou are an autonomous navigation assistant. Your task is to <instruction>. Devise an action sequence to follow the instruction using the four actions: TURN LEFT (←) or TURN RIGHT (→) by 15 degrees, MOVE FORWARD (↑) by 25 centimeters, or STOP."
         answer = ""
@@ -258,37 +267,37 @@ class StreamVLNAgent(BaseAgent):
         self.past_key_values = None
         self.output_ids = None
 
-    def load_model_and_processor(self, model_path: str, *args, **kwargs):
+    def load_model_and_processor(self, config: AgentConfig, *args, **kwargs):
         """Load StreamVLN model and custom Processor."""
-        model_max_length = kwargs.pop('model_max_length', 4096)
-        num_history = kwargs.pop('num_history', 8)
-        vision_tower_path = kwargs.pop('vision_tower_path', None)
+        params = config.agent_params or {}
+        num_history = params.get('num_history', 8)
+        vision_tower_path = params.get('vision_tower_path', None)
         
         tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_path,
-            model_max_length=model_max_length,
+            config.model_path,
+            model_max_length=config.model_max_length,
             padding_side='right',
         )
-        config = transformers.AutoConfig.from_pretrained(model_path)
+        auto_config = transformers.AutoConfig.from_pretrained(config.model_path)
         attn_implementation = detect_best_attention_implementation()
         
         # Prepare overwrite config for vision tower if specified
         if vision_tower_path:
-            config.mm_vision_tower = vision_tower_path
+            auto_config.mm_vision_tower = vision_tower_path
             print(f"✓ Overriding vision_tower path to: {vision_tower_path}")
         
         # Prepare model loading arguments
         model_kwargs = {
-            'pretrained_model_name_or_path': model_path,  # Transformers API requires this key
+            'pretrained_model_name_or_path': config.model_path,  # Transformers API requires this key
             'attn_implementation': attn_implementation,
             'torch_dtype': torch.bfloat16,
-            'config': config,
+            'config': auto_config,
             'low_cpu_mem_usage': True,
-            'device_map': 'auto',
+            'device_map': self.device if self.device is not None else 'auto',
         }
         
         # Add quantization if enabled
-        quantization_bits = kwargs.get('quantization_bits', None)
+        quantization_bits = params.get('quantization_bits', None)
         if quantization_bits == 4:
             qconf = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -404,7 +413,9 @@ class StreamVLNAgent(BaseAgent):
             'time_ids': [self.time_ids],
             'task_type': [0]
         }
-        model_inputs = dict_to_cuda(model_inputs, self.device)
+        if self.device is not None:
+            model_inputs = dict_to_cuda(model_inputs, self.device)
+        
         for key, value in model_inputs.items():
             if key in ['images', 'depths', 'poses', 'intrinsics']:
                 model_inputs[key] = model_inputs[key].to(torch.bfloat16)

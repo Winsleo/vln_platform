@@ -1,7 +1,11 @@
+# --- Configuration ---
+AGENT_TYPE="qwen25vl" # Options: "qwen25vl", "streamvln"
+
 export MAGNUM_LOG=quiet HABITAT_SIM_LOG=quiet
 MASTER_PORT=${MASTER_PORT:-12000}  # Default port
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_VERBOSITY='error'
+export TOKENIZERS_PARALLELISM=false
 
 # RxR dataset configuration via environment variables
 export RXR_ROLES=${RXR_ROLES:-"guide,follower"}  # Default to both roles
@@ -54,16 +58,29 @@ else
   NPROC=$(nvidia-smi -L | wc -l)
 fi
 
-
-CHECKPOINT="checkpoints/mengwei0427/StreamVLN_Video_qwen_1_5_r2r_rxr_envdrop_scalevln"
+# --- Model Paths ---
+if [ "$AGENT_TYPE" == "qwen25vl" ]; then
+    CHECKPOINT="checkpoints/Qwen/Qwen2.5-VL-3B-Instruct"
+elif [ "$AGENT_TYPE" == "streamvln" ]; then
+    CHECKPOINT="checkpoints/mengwei0427/StreamVLN_Video_qwen_1_5_r2r_rxr_envdrop_scalevln"
+else
+    echo "Error: Unknown AGENT_TYPE: $AGENT_TYPE"
+    exit 1
+fi
+echo "Running evaluation with:"
+echo "AGENT_TYPE: ${AGENT_TYPE}"
 echo "CHECKPOINT: ${CHECKPOINT}"
+
+# --- Other Paths ---
 VISION_MODEL_VERSION="checkpoints/google/siglip-so400m-patch14-384"
+
+# --- Evaluation Command ---
 torchrun --nproc_per_node="$NPROC" \
     --master_port=$MASTER_PORT \
     multi_model_eval/vln_eval.py \
     --model_path "$CHECKPOINT" \
-    --agent_type streamvln \
-    --habitat_config_path config/vln_rxr.yaml \
+    --agent_type "$AGENT_TYPE" \
+    --habitat_config_path config/vln_r2r.yaml \
     --output_path results/ \
     --eval_split val_unseen \
     --num_future_steps 4 \
@@ -71,5 +88,5 @@ torchrun --nproc_per_node="$NPROC" \
     --num_history 8 \
     --model_max_length 2048 \
     --save_video \
-    --quantization_bits 4 \
-    --vision_tower_path $VISION_MODEL_VERSION
+    --vision_tower_path $VISION_MODEL_VERSION \
+    # --quantization_bits 4

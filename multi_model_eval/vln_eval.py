@@ -27,7 +27,7 @@ import torch.distributed as dist
 projet_path = os.path.abspath(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, projet_path)
 from utility import get_rank, get_world_size, init_distributed_mode
-from agents import BaseAgent
+from agents.base_agent import BaseAgent
 # Import RxR dataset support from multi_model_eval habitat_extensions
 try:
     from habitat_extensions.config_utils import create_rxr_config_wrapper
@@ -88,6 +88,7 @@ class VLNEvaluator:
         with habitat.config.read_write(self.config):
             # self.config.habitat.task.measurements.success.success_distance=3.0
             self.config.habitat.dataset.split = self.split
+            self.config.habitat.simulator.habitat_sim_v0.gpu_device_id = get_rank()
             self.config.habitat.task.measurements.update(
                 {
                     "top_down_map": TopDownMapMeasurementConfig(
@@ -122,7 +123,7 @@ class VLNEvaluator:
         self.num_frames = args.num_frames
         self.agent = agent
         
-        self.output_path = os.path.join(output_path, self.dataset_type, split, 'streamvln')
+        self.output_path = os.path.join(output_path, self.dataset_type, split, self.agent.name)
         if self.is_rxr_dataset:
             print("✓ Detected RxR dataset - enabling multilingual support")
         else:
@@ -432,7 +433,7 @@ def eval():
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
-    parser.add_argument('--agent_type', type=str, default='streamvln', choices=['streamvln', 'navila'],
+    parser.add_argument('--agent_type', type=str, default='streamvln', choices=['streamvln', 'navila', 'qwen25vl'],
                         help='Type of agent to use for evaluation')
     parser.add_argument('--vision_tower_path', type=str, default=None,
                         help='Path to vision tower model (e.g., checkpoints/google/siglip-so400m-patch14-384)')
@@ -446,17 +447,18 @@ def eval():
 def evaluate(args):
     local_rank = args.local_rank
     world_size = get_world_size()
+    device = torch.device("cuda", local_rank)
     
     # Create agent using the factory pattern
-    from agents.agent_factory import AgentFactory, AgentConfig, AgentType
+    from agents.agent_factory import AgentFactory
+    from agents.base_agent import AgentConfig
     
     try:
         # Create agent configuration
         agent_params = {}
         if hasattr(args, 'quantization_bits'):
             agent_params['quantization_bits'] = args.quantization_bits
-        if hasattr(args, 'model_max_length'):
-            agent_params['model_max_length'] = args.model_max_length
+
         # Add agent-specific parameters based on type
         if args.agent_type == 'streamvln':
             if getattr(args, 'vision_tower_path', None):
@@ -471,18 +473,23 @@ def evaluate(args):
         elif args.agent_type == 'navila':
             agent_params['num_video_frames'] = getattr(args, 'num_frames', 8)
             project_root = os.path.join(os.path.dirname(projet_path), "NaVILA")
+        elif args.agent_type == 'qwen25vl':
+            if hasattr(args, 'num_history'):
+                agent_params['num_history'] = args.num_history
+            project_root = os.path.dirname(os.path.abspath(__file__))
 
         config = AgentConfig(
             model_path=args.model_path,
-            agent_type=AgentType(args.agent_type),
-            project_root=project_root,  # Pass the project root to the config
-            agent_params=agent_params
+            agent_type=args.agent_type,
+            project_root=project_root,
+            agent_params=agent_params,
+            model_max_length=args.model_max_length,
+            device=device,
         )
         
         # Create agent using factory
         factory = AgentFactory()  # Factory can be initialized without project_root now
         agent = factory.create_agent(config)
-        
     except ValueError as e:
         print(f"\033[91m❌ Configuration Error: {e}\033[0m")
         sys.exit(1)

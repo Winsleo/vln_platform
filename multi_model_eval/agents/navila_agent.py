@@ -22,7 +22,7 @@ from llava.conversation import SeparatorStyle, conv_templates
 from llava.mm_utils import KeywordsStoppingCriteria, process_images, tokenizer_image_token
 from llava.model.builder import load_pretrained_model
 
-from .base_agent import BaseAgent
+from .base_agent import BaseAgent, AgentConfig
 from .processors import BaseProcessor
 
 
@@ -131,35 +131,26 @@ class NaVILAProcessor(BaseProcessor):
 
 
 class NaVILAAgent(BaseAgent):
-    """NaVILA agent implementation for single-environment vision-language navigation tasks.
-    
-    Features:
-    - Multi-frame video processing with history management
-    - Vision-language understanding for navigation
-    - Action parsing from natural language outputs
-    - Queue-based action execution for smooth navigation
-    - Single environment support (simplified state management)
-    """
-    
-    def __init__(self, model_path: str, *args, **kwargs):
+    """NaVILA agent implementation."""
+    @property
+    def name(self) -> str:
+        return "navila"
+
+    def __init__(self, config: AgentConfig, *args, **kwargs):
         """Initialize NaVILA agent.
         
         Args:
-            model_path: Path to the NaVILA model checkpoint
-            *args: Additional positional arguments
-            **kwargs: Additional keyword arguments including:
-                - num_video_frames: Number of video frames to process (default: 8)
-                - conv_mode: Conversation mode (default: "llama_3")
-                - max_new_tokens: Maximum new tokens to generate (default: 32)
-                - temperature: Generation temperature (default: 0.0)
+            config: Agent configuration object
         """
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.config = config
         
-        # Model parameters
-        self.num_video_frames = kwargs.get('num_video_frames', 8)
-        self.conv_mode = kwargs.get('conv_mode', "llama_3")
-        self.max_new_tokens = kwargs.get('max_new_tokens', 32)
-        self.temperature = kwargs.get('temperature', 0.0)
+        # Extract parameters from config
+        self.device = config.device
+        params = config.agent_params or {}
+        self.num_video_frames = params.get('num_video_frames', 8)
+        self.conv_mode = params.get('conv_mode', "llama_3")
+        self.max_new_tokens = params.get('max_new_tokens', 32)
+        self.temperature = params.get('temperature', 0.0)
         
         # Action patterns for parsing
         self.action_patterns = {
@@ -174,22 +165,21 @@ class NaVILAAgent(BaseAgent):
         self.action_queues = []  # list of queued actions
         
         # Load model and processor
-        super().__init__(model_path, *args, **kwargs)
+        super().__init__(config, *args, **kwargs)
         
-    def load_model_and_processor(self, model_path: str, **kwargs) -> Tuple[PreTrainedModel, BaseProcessor]:
+    def load_model_and_processor(self, config: AgentConfig, **kwargs) -> Tuple[PreTrainedModel, BaseProcessor]:
         """Load NaVILA model and processor."""
         # Get model name from path
-        model_name = os.path.basename(os.path.normpath(model_path))
+        model_name = os.path.basename(os.path.normpath(config.model_path))
         
         # Load pretrained model
         tokenizer, model, image_processor, context_len = load_pretrained_model(
-            model_path, model_name
+            config.model_path, model_name, device_map=self.device if self.device is not None else "auto"
         )
         
-        # Move model to device
-        model = model.cuda() if torch.cuda.is_available() else model
         # Create processor
-        processor = NaVILAProcessor(tokenizer, image_processor, model.config, device=model.device)
+        processor_device = self.device if self.device is not None else model.device
+        processor = NaVILAProcessor(tokenizer, image_processor, model.config, device=processor_device)
         
         return model, processor
     
@@ -206,46 +196,44 @@ class NaVILAAgent(BaseAgent):
         Returns:
             action: Integer action (0=STOP, 1=FORWARD, 2=LEFT, 3=RIGHT)
         """
+        curr_rgb = input_dict.get('rgb')
+        # Convert numpy array to PIL Image if needed
+        if isinstance(curr_rgb, np.ndarray):
+            curr_rgb = Image.fromarray(np.uint8(curr_rgb)).convert("RGB")
+        self.past_rgbs.append(curr_rgb)
+
         # Check if there are queued actions
         if len(self.action_queues) > 0:
             action = self.action_queues.pop(0)
             print(f"Using queued action: {action}, queue length: {len(self.action_queues)}")
             return action
         
-        # Get current observation and instruction
-        curr_rgb = input_dict.get('rgb')
-        instruction = input_dict.get('instruction', '')
-        
-        # Convert numpy array to PIL Image if needed
-        if isinstance(curr_rgb, np.ndarray):
-            curr_rgb = Image.fromarray(np.uint8(curr_rgb)).convert("RGB")
-        
-        # Prepare image sequence
-        past_and_current_rgbs = self.past_rgbs + [curr_rgb]
         past_and_current_rgbs = sample_and_pad_images(
-            past_and_current_rgbs, 
+            self.past_rgbs, 
             num_frames=self.num_video_frames
         )
         
+        instruction = input_dict.get('instruction', '')
         # Create navigation prompt
         prompt_text = self._create_navigation_prompt(past_and_current_rgbs, instruction)
         
-        # Process inputs using BaseProcessor interface
+        # Prepare inputs for the model
         processor_inputs = {
             'images': past_and_current_rgbs,
-            'text': prompt_text
+            'text': prompt_text,
+            'conv_mode': self.conv_mode,
         }
         
-        # Use prepare_from_inputs - the only allowed interface
+        # Use the processor to prepare model inputs, moving to the correct device
         model_inputs = self.processor.prepare_from_inputs(
             processor_inputs,
-            device=self.model.device
+            device=self.device,  # Pass device, processor will handle if it's None
         )
         
         # Add stopping criteria
         model_inputs['stopping_criteria'] = self._create_stopping_criteria(model_inputs['input_ids'])
         
-        # Generate response - use model_inputs directly as it's ready for model.generate()
+        # Generate response
         with torch.inference_mode():
             output_ids = self.model.generate(
                 **model_inputs,
@@ -273,9 +261,6 @@ class NaVILAAgent(BaseAgent):
         if len(actions) > 1:
             self.action_queues.extend(actions[1:])
             print(f"Queued {len(actions) - 1} additional actions: {actions[1:]}")
-        
-        # Update RGB history
-        self.past_rgbs.append(curr_rgb)
         
         return action
     
