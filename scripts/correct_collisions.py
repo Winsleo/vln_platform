@@ -11,11 +11,7 @@ import habitat
 from habitat import Env
 from habitat_baselines.config.default import get_config as get_habitat_config
 from PIL import Image
-from habitat.utils.visualizations.utils import (
-    images_to_video,
-    observations_to_image,
-    overlay_frame,
-)
+from habitat.utils.visualizations.utils import images_to_video
 from habitat.config.default_structured_configs import (
     TopDownMapMeasurementConfig,
     CollisionsMeasurementConfig,
@@ -296,7 +292,7 @@ def main():
     """Main function to run the collision correction script."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--habitat-config-path', '-c', type=str, default='config/vln_r2r.yaml'
+        '--config-path', '-c', type=str, default='config/vln_r2r.yaml'
     )
     parser.add_argument('--split', '-s', type=str, default='val_unseen')
     parser.add_argument(

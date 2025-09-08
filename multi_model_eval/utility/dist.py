@@ -67,5 +67,3 @@ def init_distributed_mode(args):
                             timeout=datetime.timedelta(0, 7200))
     dist.barrier()
     setup_for_distributed(args.rank == 0)
-
-    

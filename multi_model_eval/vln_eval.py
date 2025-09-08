@@ -1,6 +1,6 @@
 import sys
 import os
-
+import re
 from PIL import Image
 import tqdm
 import torch
@@ -54,7 +54,6 @@ class VLNEvaluator:
         self,
         config_path: str,
         split: str = "val_seen",
-        env_num: int = 8,
         output_path: str = None,
         agent: BaseAgent = None,
         epoch: int = 0,
@@ -63,7 +62,7 @@ class VLNEvaluator:
         self.args = args
         self.device = torch.device('cuda')
         self.split = split
-        self.env_num = env_num
+        self.env_num = args.world_size
         self.save_video = args.save_video
         self.epoch = epoch
         self.config_path = config_path
@@ -73,12 +72,15 @@ class VLNEvaluator:
             ('rxr' in config_path.lower() or is_rxr_config(config_path))):
             print("Using RxR-aware configuration loader")
             self.config = get_habitat_config_with_rxr(config_path)
-            self.dataset_type = "RxR"
+            self.dataset_type = "rxr"
             self.is_rxr_dataset = True
         else:
             self.config = get_habitat_config(config_path)
-            self.dataset_type = "R2R"
+            self.dataset_type = "r2r"
             self.is_rxr_dataset = False
+        pattern = re.compile(r"datasets/([^/]+)")
+        match = pattern.search(self.config.habitat.dataset.data_path)
+        self.dataset_type = match.group(1)
         self.agent_config = get_agent_config(self.config.habitat.simulator)
         self.sim_sensors_config = self.config.habitat.simulator.agents.main_agent.sim_sensors
 
@@ -88,7 +90,7 @@ class VLNEvaluator:
         with habitat.config.read_write(self.config):
             # self.config.habitat.task.measurements.success.success_distance=3.0
             self.config.habitat.dataset.split = self.split
-            self.config.habitat.simulator.habitat_sim_v0.gpu_device_id = get_rank()
+            self.config.habitat.simulator.habitat_sim_v0.gpu_device_id = args.local_rank
             self.config.habitat.task.measurements.update(
                 {
                     "top_down_map": TopDownMapMeasurementConfig(
@@ -207,7 +209,7 @@ class VLNEvaluator:
         for scene in sorted(scene_episode_dict.keys()):
             episodes = scene_episode_dict[scene]
             scene_id = scene.split('/')[-2]
-            print(f"scene_id = {scene_id}")
+            print(f"scene = {scene}, scene_id = {scene_id}")
             episode_id = 0
             process_bar = tqdm.tqdm(range(len(episodes[env_id::self.env_num])), desc=f"scene {scene_id}")
             for episode in episodes[env_id::self.env_num]:
@@ -411,7 +413,7 @@ def eval():
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank", default=0, type=int, help="node rank")
     parser.add_argument("--model_path", type=str, default="")
-    parser.add_argument("--habitat_config_path", type=str, default='config/vln_r2r.yaml',
+    parser.add_argument("--config_path", type=str, default='config/vln_r2r.yaml',
                         help='Path to habitat config file. Use configs/vln_rxr.yaml for RxR dataset')
     parser.add_argument("--eval_split", type=str, default='val_unseen')
     parser.add_argument("--output_path", type=str, default='./results')
@@ -501,9 +503,8 @@ def evaluate(args):
         print(f"\033[91m❌ Agent Creation Error: {e}\033[0m")
         sys.exit(1)
     evaluator = VLNEvaluator(
-        config_path=args.habitat_config_path,
+        config_path=args.config_path,
         split=args.eval_split,
-        env_num=world_size,
         output_path=args.output_path,
         agent=agent,
         epoch=0,
