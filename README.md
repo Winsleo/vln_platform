@@ -297,11 +297,6 @@ class YourAgent(BaseAgent):
 ### 3. Register in `AgentFactory`
 ```python
 # multi_model_eval/agents/agent_factory.py
-
-class AgentType(Enum):
-    STREAMVLN = "streamvln"
-    YOUR_AGENT = "your_agent"  # 1) add enum
-
 class AgentFactory:
     def create_agent(self, config):
         agent_type = config.agent_type
@@ -346,7 +341,7 @@ This script performs closed-loop correction for trajectories that encountered co
 - Usage
 ```bash
 python scripts/correct_collisions.py \
-  --habitat-config-path config/vln_rxr.yaml \
+  --config-path config/vln_rxr.yaml \
   --split val_unseen \
   --input-dir results/RxR/val_unseen/streamvln/vis_0 \
   --actions-file actions.json \
@@ -359,7 +354,7 @@ python scripts/correct_collisions.py \
   - Ensure `--split` matches the evaluated split (e.g., `val_unseen`).
   - `--input-dir` should point to the layer containing multiple `{sceneId}_{episodeId}` subfolders (e.g., `vis_0`).
   - To use the human-annotated file, set `--actions-file actions_human.json` (both formats are supported).
-  - For R2R, switch `--habitat-config-path` to `config/vln_r2r.yaml` and use the corresponding `results` path.
+  - For R2R, switch `--config-path` to `config/vln_r2r.yaml` and use the corresponding `results` path.
 
 - Common utilities
   - Shared helpers are in `multi_model_eval/utility/vln_common.py`: `save_rgb`, `create_visualization_frame`, `is_rxr_config`, `get_episode_instruction`. They are used by both `multi_model_eval/vln_eval.py` and `scripts/correct_collisions.py`. 

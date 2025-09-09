@@ -10,7 +10,6 @@ import numpy as np
 import habitat
 from habitat import Env
 from habitat_baselines.config.default import get_config as get_habitat_config
-from PIL import Image
 from habitat.utils.visualizations.utils import images_to_video
 from habitat.config.default_structured_configs import (
     TopDownMapMeasurementConfig,
@@ -131,13 +130,6 @@ def find_episode(env: Env, scene_id: str, episode_id: int):
         f'Episode {target_scene}_{target_eid} not found. '
         'Verify dataset split and episode ids.'
     )
-
-
-def save_rgb(observations, out_dir: str, idx: int) -> None:
-    """Save an RGB observation to a file."""
-    rgb = observations['rgb']
-    img = Image.fromarray(rgb).convert('RGB')
-    img.save(os.path.join(out_dir, f'frame_{idx:04d}.jpg'))
 
 
 def get_agent_position(env: Env) -> np.ndarray:
@@ -308,7 +300,7 @@ def main():
         '--save-video', '-v', action='store_true', default=False
     )
     args = parser.parse_args()
-    env = config_env(args.habitat_config_path, args.split)
+    env = config_env(args.config_path, args.split)
 
     if not os.path.isdir(args.input_dir):
         print(f"Error: '{args.input_dir}' is not a directory.")

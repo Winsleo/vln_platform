@@ -29,7 +29,7 @@
 👉 改动建议：
 - 新增或适配模型时，优先在 `multi_model_eval/agents/` 下新增 Agent。
 - 若需新增输入输出前/后处理逻辑，请在 `processors/` 目录下实现并在 Agent 中使用。
-- 新增评测配置或环境参数，放在 `config/`，并通过 `--habitat_config_path` 指定。 
+- 新增评测配置或环境参数，放在 `config/`，并通过 `--config_path` 指定。 
 
 ## 🚀 快速上手
 
@@ -61,7 +61,7 @@
        --agent_type streamvln \
        --output_path results/ \
        --vision_tower_path checkpoints/google/siglip-so400m-patch14-384 \
-       --habitat_config_path config/vln_r2r.yaml \
+       --config_path config/vln_r2r.yaml \
        --eval_split val_unseen
        --num_future_steps 4 \
        --num_frames 16 \
@@ -105,7 +105,7 @@
        --agent_type streamvln \
        --output_path results/ \
        --vision_tower_path checkpoints/google/siglip-so400m-patch14-384 \
-       --habitat_config_path config/vln_r2r.yaml \
+       --config_path config/vln_r2r.yaml \
        --eval_split val_unseen
        --num_future_steps 4 \
        --num_frames 16 \
@@ -304,11 +304,6 @@ class YourAgent(BaseAgent):
 ### 3. 在 `AgentFactory` 中注册
 ```python
 # multi_model_eval/agents/agent_factory.py
-
-class AgentType(Enum):
-    STREAMVLN = "streamvln"
-    YOUR_AGENT = "your_agent"  # 1. 添加枚举
-
 class AgentFactory:
     def create_agent(self, config):
         agent_type = config.agent_type
@@ -354,7 +349,7 @@ class AgentFactory:
 - 使用示例
 ```bash
 python scripts/correct_collisions.py \
-  --habitat-config-path config/vln_rxr.yaml \
+  --config-path config/vln_rxr.yaml \
   --split val_unseen \
   --input-dir results/RxR/val_unseen/streamvln/vis_0 \
   --actions-file actions.json \
@@ -367,7 +362,7 @@ python scripts/correct_collisions.py \
   - `--split` 必须与生成结果的 split 匹配（例如 `val_unseen`）。
   - `--input-dir` 指向包含若干 `{sceneId}_{episodeId}` 子目录的一层（如 `vis_0`）。
   - 如需使用人类动作文件，改用 `--actions-file actions_human.json` 即可（脚本会自动兼容两种动作格式）。
-  - 若处理 R2R，请将 `--habitat-config-path` 改为 `config/vln_r2r.yaml`，并切换到对应的 `results` 路径。
+  - 若处理 R2R，请将 `--config-path` 改为 `config/vln_r2r.yaml`，并切换到对应的 `results` 路径。
 
 - 相关公共函数
   - 公共工具位于 `multi_model_eval/utility/vln_common.py`：`save_rgb`、`create_visualization_frame`、`is_rxr_config`、`get_episode_instruction`，被 `multi_model_eval/vln_eval.py` 与 `scripts/correct_collisions.py` 共同复用。
