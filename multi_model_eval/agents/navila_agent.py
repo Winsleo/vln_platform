@@ -15,7 +15,7 @@ from typing import List, Dict, Any, Tuple, Optional, Union
 from PIL import Image
 import numpy as np
 import torch
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, ProcessorMixin
 # NaVILA specific imports
 from llava.constants import DEFAULT_IMAGE_TOKEN, IMAGE_TOKEN_INDEX
 from llava.conversation import SeparatorStyle, conv_templates
@@ -44,14 +44,27 @@ def sample_and_pad_images(images, num_frames=8, width=512, height=512):
     return sampled_frames
 
 
-class NaVILAProcessor(BaseProcessor):
+class NaVILAProcessor(ProcessorMixin, BaseProcessor):
     """NaVILA processor that strictly follows BaseProcessor interface with single responsibility."""
     
-    def __init__(self, tokenizer, image_processor, model_config, device=None):
-        # Initialize BaseProcessor with required parameters
-        super().__init__(tokenizer=tokenizer, image_processor=image_processor)
+    # 兼容 Transformers Processor 接口
+    attributes = ["image_processor", "tokenizer"]
+    image_processor_class = "AutoImageProcessor"
+    tokenizer_class = ("PreTrainedTokenizer", "PreTrainedTokenizerFast")
+
+    def __init__(self, tokenizer, image_processor, model_config, device=None, chat_template: Optional[str] = None):
+        # 初始化 ProcessorMixin，自动挂载并校验组件
+        ProcessorMixin.__init__(self, image_processor=image_processor, tokenizer=tokenizer, chat_template=chat_template)
+        # 轻量基类工具
+        BaseProcessor.__init__(self)
         self.model_config = model_config
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # 可选设置聊天模板
+        if chat_template is not None:
+            try:
+                self.tokenizer.chat_template = chat_template
+            except Exception:
+                pass
     
     def prepare_from_inputs(
         self,
@@ -244,7 +257,7 @@ class NaVILAAgent(BaseAgent):
             )
         
         # Decode output using BaseProcessor decode method
-        outputs = self.processor.decode(output_ids, skip_special_tokens=True)[0].strip()
+        outputs = self.processor.decode_trimmed(output_ids, skip_special_tokens=True)[0].strip()
         
         print(f"Model output: {outputs}")
         

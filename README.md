@@ -25,7 +25,7 @@ A Vision-and-Language Navigation (VLN) evaluation platform designed with a “pl
 👉 Tips for changes:
 - When adding/adapting a model, prefer creating a new Agent under `multi_model_eval/agents/`.
 - Add pre-/post-processing in `processors/` and use them in your Agent.
-- Place new evaluation configs under `config/` and pass via `--habitat_config_path`.
+- Place new evaluation configs under `config/` and pass via `--config_path`.
 
 ## 🚀 Quick Start
 
@@ -58,7 +58,7 @@ Daily evaluation (repeatable):
        --agent_type streamvln \
        --output_path results/ \
        --vision_tower_path checkpoints/google/siglip-so400m-patch14-384 \
-       --habitat_config_path config/vln_r2r.yaml \
+       --config_path config/vln_r2r.yaml \
        --eval_split val_unseen \
        --num_future_steps 4 \
        --num_frames 16 \
@@ -102,7 +102,7 @@ Steps:
        --agent_type streamvln \
        --output_path results/ \
        --vision_tower_path checkpoints/google/siglip-so400m-patch14-384 \
-       --habitat_config_path config/vln_r2r.yaml \
+       --config_path config/vln_r2r.yaml \
        --eval_split val_unseen \
        --num_future_steps 4 \
        --num_frames 16 \

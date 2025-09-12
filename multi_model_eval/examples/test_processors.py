@@ -42,7 +42,7 @@ def demo_language1() -> None:
     model_inputs = processor.prepare_from_inputs(inputs)
     model_inputs.to('cuda')
     outputs = model.generate(**model_inputs, max_new_tokens=512)
-    texts = processor.decode(outputs, clean_up_tokenization_spaces=True)
+    texts = processor.decode_trimmed(outputs, clean_up_tokenization_spaces=True)
     print('Language output:', texts[0])
 
 
@@ -58,7 +58,7 @@ def demo_language2() -> None:
     inputs = {
         'messages': prompt
     }
-    model_inputs = processor.prepare_from_inputs(inputs, padding=True)
+    model_inputs = processor.prepare_from_inputs(inputs, padding=True, add_generation_prompt=True)
     model_inputs.to('cuda')
 
     gen_kwargs = {
@@ -73,10 +73,7 @@ def demo_language2() -> None:
     with torch.no_grad():
         outputs = model.generate(**model_inputs, **gen_kwargs)
     # Trim the prompt part for clean output
-    generated_ids_trimmed = [
-        out_ids[len(in_ids) :] for in_ids, out_ids in zip(model_inputs["input_ids"], outputs)
-    ]
-    texts = processor.decode(generated_ids_trimmed, clean_up_tokenization_spaces=True)
+    texts = processor.decode_trimmed(outputs)
     print("distilgpt2 output:", texts[0].strip())
 
 
@@ -136,23 +133,14 @@ def demo_vision_language() -> None:
 
     # generate
     single_generated_ids = model.generate(**single_inputs)
-    single_generated_ids_trimmed = [
-        out_ids[len(in_ids) :] for in_ids, out_ids in zip(single_inputs['input_ids'], single_generated_ids)
-    ]
-
     batch_generated_ids = model.generate(**batch_inputs)
-    batch_generated_ids_trimmed = [
-        out_ids[len(in_ids) :] for in_ids, out_ids in zip(batch_inputs['input_ids'], batch_generated_ids)
-    ]
-
-    single_texts = processor.decode(single_generated_ids_trimmed)
-    batch_texts = processor.decode(batch_generated_ids_trimmed)
+    single_texts = processor.decode_trimmed(single_generated_ids)
+    batch_texts = processor.decode_trimmed(batch_generated_ids)
     print('single output:')
     print(single_texts[0])
     print()
     print('batch output:')
     print(batch_texts[0])
-
 
 
 if __name__ == '__main__':

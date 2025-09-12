@@ -5,20 +5,31 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Union
 
 import torch
-from transformers import PreTrainedTokenizerBase
+from transformers import PreTrainedTokenizerBase, ProcessorMixin
 
 from .base_processor import BaseProcessor, TensorDict
 
 
-class LanguageProcessor(BaseProcessor):
+class LanguageProcessor(ProcessorMixin, BaseProcessor):
     """Language-only processor that wraps a tokenizer.
 
     This processor converts prompts or chat-style messages to input ids
     suitable for text-only models.
     """
 
-    def __init__(self, tokenizer: PreTrainedTokenizerBase) -> None:
-        super().__init__(tokenizer=tokenizer)
+    # Transformers Processor 接口定义
+    attributes = ["tokenizer"]
+    tokenizer_class = ("PreTrainedTokenizer", "PreTrainedTokenizerFast")
+
+    def __init__(self, tokenizer: PreTrainedTokenizerBase, chat_template: Optional[str] = None) -> None:
+        # 初始化 ProcessorMixin（会做类型校验与属性挂载）
+        ProcessorMixin.__init__(self, tokenizer=tokenizer, chat_template=chat_template)
+        if chat_template is not None:
+            # 为 tokenizer 设置模板，便于 apply_chat_template 使用
+            try:
+                self.tokenizer.chat_template = chat_template
+            except Exception:
+                pass
 
     def prepare_from_inputs(
         self,
@@ -77,7 +88,7 @@ class LanguageProcessor(BaseProcessor):
         messages = input_dict.get('messages', input_dict.get('text', None))
         if messages is None:
             raise ValueError('messages or text is required')
-        text_batch, padding = self.process_messages(messages, padding=padding, add_generation_prompt=add_generation_prompt)
+        text_batch, padding = self.process_messages(messages, padding=padding, add_generation_prompt=add_generation_prompt,add_system=add_system)
         model_inputs = self.tokenizer(
             text_batch,
             padding=padding,

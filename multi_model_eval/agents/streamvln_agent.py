@@ -10,7 +10,7 @@ from PIL import Image
 import numpy as np
 import torch
 import transformers
-from transformers import BitsAndBytesConfig
+from transformers import BitsAndBytesConfig, ProcessorMixin
 from transformers.image_utils import to_numpy_array
 from .processors import BaseProcessor
 from .base_agent import BaseAgent, AgentConfig
@@ -24,7 +24,7 @@ from streamvln.utils.utils import (dict_to_cuda,
 from streamvln.model.stream_video_vln import StreamVLNForCausalLM
 
 
-class StreamVLNProcessor(BaseProcessor):
+class StreamVLNProcessor(ProcessorMixin, BaseProcessor):
     """Processor that converts conversations to StreamVLN required `inputs` tensors.
 
     - Compatible with Qwen-style conversations;
@@ -32,9 +32,17 @@ class StreamVLNProcessor(BaseProcessor):
     - Use key 'inputs' in output dictionary (required by StreamVLN's generate interface).
     - Handle all input preprocessing for RGB, depth, pose, intrinsic parameters, etc.
     """
-    def __init__(self, tokenizer, image_processor):
-        super().__init__(tokenizer=tokenizer, image_processor=image_processor)
+    # 兼容 Transformers Processor 接口（仅由 ProcessorMixin 管理 tokenizer，image_processor 自管以兼容自定义实现）
+    attributes = ["tokenizer"]
+    tokenizer_class = ("PreTrainedTokenizer", "PreTrainedTokenizerFast")
 
+    def __init__(self, tokenizer, image_processor, chat_template: Optional[str] = None):
+        # 仅由 ProcessorMixin 管理 tokenizer，避免对自定义 image_processor 的类型校验
+        ProcessorMixin.__init__(self, tokenizer=tokenizer, chat_template=chat_template)
+        BaseProcessor.__init__(self)
+        self.image_processor = image_processor
+        self.tokenizer.add_tokens(["<image>"], special_tokens=True)
+        self.tokenizer.add_tokens(["<memory>"], special_tokens=True)
         self.conjunctions = [
                                 'you can see ',
                                 'in front of you is ',
@@ -266,6 +274,7 @@ class StreamVLNAgent(BaseAgent):
         self.action_seq = []
         self.past_key_values = None
         self.output_ids = None
+        
 
     def load_model_and_processor(self, config: AgentConfig, *args, **kwargs):
         """Load StreamVLN model and custom Processor."""
@@ -364,11 +373,9 @@ class StreamVLNAgent(BaseAgent):
             messages = [{"from": "human", "value": ""}, {"from": "gpt", "value": ""}]
             add_system = False
         messages = [messages]
-        
         input_ids = self.processor.prepare_from_inputs({'messages': messages}, add_system=add_system)['input_ids']
         if self.output_ids is not None:
             input_ids = torch.cat([self.output_ids, input_ids.to(self.output_ids.device)], dim=1)
-
         images = self.rgb_list[-1:]
         depths = self.depth_list[-1:]
         poses = self.pose_list[-1:]
@@ -402,9 +409,9 @@ class StreamVLNAgent(BaseAgent):
                 print(f"\033[91mrgb_list length: {len(self.rgb_list)}\033[0m")
                 # If getting history frames fails, only use current frame
                 pass
-
+        images = torch.stack(images).unsqueeze(0)
         model_inputs = {
-            'images': torch.stack(images).unsqueeze(0),
+            'images': images,
             'depths': torch.stack(depths).unsqueeze(0),
             'poses': torch.stack(poses).unsqueeze(0),
             'intrinsics': torch.stack(intrinsics).unsqueeze(0),
@@ -419,7 +426,6 @@ class StreamVLNAgent(BaseAgent):
         for key, value in model_inputs.items():
             if key in ['images', 'depths', 'poses', 'intrinsics']:
                 model_inputs[key] = model_inputs[key].to(torch.bfloat16)
-
         outputs = self.model.generate(
             **model_inputs,
             do_sample=False,
@@ -432,7 +438,7 @@ class StreamVLNAgent(BaseAgent):
         self.output_ids = outputs.sequences
         self.past_key_values = outputs.past_key_values
 
-        decoded = self.processor.decode(
+        decoded = self.processor.decode_trimmed(
             self.output_ids, skip_special_tokens=False
         )[0].strip()
 
@@ -471,3 +477,41 @@ class StreamVLNAgent(BaseAgent):
         actions = [self.actions2idx[match] for match in matches]
         actions = itertools.chain.from_iterable(actions)
         return list(actions)
+
+    def _decode_with_special_tokens(self, ids: torch.Tensor) -> str:
+        """Decode ids that may contain negative special placeholders.
+
+        -200 -> <image>
+        -300 -> <memory>
+        Others (>=0) are decoded via the tokenizer.
+        """
+        tokenizer = self.processor.tokenizer
+        id_list = ids.tolist() if isinstance(ids, torch.Tensor) else list(ids)
+        pieces = []
+        buffer_ids = []
+
+        def flush_buffer():
+            if len(buffer_ids) == 0:
+                return
+            # Use decode to respect tokenizer spacing rules
+            pieces.append(tokenizer.decode(buffer_ids, skip_special_tokens=False))
+            buffer_ids.clear()
+
+        for token_id in id_list:
+            if token_id == IMAGE_TOKEN_INDEX:
+                flush_buffer()
+                pieces.append(DEFAULT_IMAGE_TOKEN)
+            elif token_id == MEMORY_TOKEN_INDEX:
+                flush_buffer()
+                pieces.append(DEFAULT_MEMORY_TOKEN)
+            else:
+                # Only push non-negative ids to tokenizer
+                if token_id >= 0:
+                    buffer_ids.append(token_id)
+                else:
+                    # Unknown negative id: flush and show raw placeholder
+                    flush_buffer()
+                    pieces.append(f"<unk_{token_id}>")
+
+        flush_buffer()
+        return "".join(pieces)

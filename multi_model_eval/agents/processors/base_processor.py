@@ -24,37 +24,22 @@ class BaseProcessor(abc.ABC):
     for generation. The returned dict is expected to be directly
     consumable by model.generate(**returned_dict).
     """
-
-    def __init__(
-        self,
-        *,
-        processor: Optional[Any] = None,
-        tokenizer: Optional[Any] = None,
-        image_processor: Optional[Any] = None,
-    ) -> None:
-        super().__init__()
-        self.processor = processor
-        self.tokenizer = tokenizer if tokenizer is not None else getattr(processor, 'tokenizer', None)
-        self.image_processor = image_processor if image_processor is not None else getattr(processor, 'image_processor', None)
-
-    def process_messages(self, messages: Union[str, Messages], *, padding: bool = True, add_generation_prompt: bool = True) -> List[str]:
+    def process_messages(self, messages: Union[str, Messages], *, padding: bool = True, add_generation_prompt: bool = True, add_system: bool = False) -> str:
         if isinstance(messages, str):
             text = messages
         else:
-            # Try chat template if available
             try:
-                if getattr(self,'tokenizer', None) is not None \
-                and getattr(self.tokenizer, 'apply_chat_template', None) is not None:
+                if hasattr(self, 'apply_chat_template') and callable(getattr(self, 'apply_chat_template')):
+                    text = self.apply_chat_template(  # type: ignore[attr-defined]
+                        list(messages), tokenize=False, add_generation_prompt=add_generation_prompt, add_system=add_system
+                    )
+                elif hasattr(self, 'tokenizer') and getattr(self, 'tokenizer', None) is not None \
+                        and getattr(self.tokenizer, 'apply_chat_template', None) is not None:
                     text = self.tokenizer.apply_chat_template(
-                        list(messages), tokenize=False, add_generation_prompt=add_generation_prompt
-                    ) 
-                elif getattr(self,'processor', None) is not None \
-                and getattr(self.processor, 'apply_chat_template', None) is not None:
-                    text = self.processor.apply_chat_template(
-                        list(messages), tokenize=False, add_generation_prompt=add_generation_prompt
+                        list(messages), tokenize=False, add_generation_prompt=add_generation_prompt, add_system=add_system
                     )
                 else:
-                    raise Exception('No available chat template found on tokenizer or processor')
+                    raise Exception('No available chat template found on processor/tokenizer')
             except Exception:
                 # Fallback: concatenate plain text segments
                 parts: List[str] = []
@@ -71,20 +56,22 @@ class BaseProcessor(abc.ABC):
                         parts.append(str(content))
                 text = '\n'.join(parts)
 
-        # Ensure a valid padding strategy for tokenizers without pad token (e.g., GPT-2)
-        if padding:
-            if getattr(self.tokenizer, 'pad_token', None) is None:
-                eos_token = getattr(self.tokenizer, 'eos_token', None)
+        # 对无 PAD 的分词器（如 GPT-2）设置合理的 padding 策略
+        if padding and getattr(self, 'tokenizer', None) is not None:
+            tok = getattr(self, 'tokenizer')
+            if getattr(tok, 'pad_token', None) is None:
+                eos_token = getattr(tok, 'eos_token', None)
                 if eos_token is not None:
-                    # Use EOS as PAD for batching purposes
-                    self.tokenizer.pad_token = eos_token  # type: ignore[assignment]
+                    try:
+                        tok.pad_token = eos_token  # type: ignore[assignment]
+                    except Exception:
+                        padding = False
                 else:
-                    # As a last resort, disable padding
                     padding = False
 
         return text, padding
 
-    def decode(
+    def decode_trimmed(
         self,
         generated_ids: torch.Tensor,
         input_ids: Optional[torch.Tensor] = None,
@@ -100,6 +87,18 @@ class BaseProcessor(abc.ABC):
             ]
         else:
             generated_ids_trimmed = generated_ids
+        # 优先使用 ProcessorMixin 的 batch_decode（由 tokenizer 提供）
+        if hasattr(self, 'batch_decode'):
+            try:
+                return self.batch_decode(  # type: ignore[attr-defined]
+                    generated_ids_trimmed,
+                    skip_special_tokens=skip_special_tokens,
+                    clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+                )
+            except Exception:
+                pass
+
+        # 回退到 tokenizer 的 batch_decode
         if getattr(self, 'tokenizer', None) is not None:
             return self.tokenizer.batch_decode(
                 generated_ids_trimmed,  # type: ignore[arg-type]
@@ -107,14 +106,7 @@ class BaseProcessor(abc.ABC):
                 clean_up_tokenization_spaces=clean_up_tokenization_spaces,
             )
 
-        if getattr(self, 'processor', None) is None or getattr(self.processor, 'batch_decode', None) is None:
-            raise RuntimeError('No available decoder found on processor/tokenizer')
-
-        return self.processor.batch_decode(
-            generated_ids_trimmed,  # type: ignore[arg-type]
-            skip_special_tokens=skip_special_tokens,
-            clean_up_tokenization_spaces=clean_up_tokenization_spaces,
-        )
+        raise RuntimeError('No available decoder found on processor/tokenizer')
 
     @abc.abstractmethod
     def prepare_from_inputs(
