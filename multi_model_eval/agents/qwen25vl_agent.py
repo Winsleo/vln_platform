@@ -368,32 +368,14 @@ class Qwen25VLAgent(BaseAgent):
         """Create navigation-specific prompt with conversation template."""
         # Create interleaved image tokens
         interleaved_images = "<|vision_start|><|image_pad|><|vision_end|>" * (len(images) - 1)
-        
-        # Create navigation question
-        # question = (
-        #     f"You have been given a video of historical observations:{interleaved_images}, "
-        #     f'and current observation:<|vision_start|><|image_pad|><|vision_end|>\n '
-        #     f'Your assigned task is: "{instruction}" '
-        #     f"Analyze this series of images to decide your next action, which could be turning left or right by a specific degree, "
-        #     f"moving forward a certain distance(cm), or stop if the task is completed."
-        # )
-        # conversation=[
-        # {
-        #   'role': 'system',
-        #   'content': f'You are a intelligent robot programmed for vision-language navigation tasks.'
-        #              f'You can not only understand the instructions from user to perform navigation tasks,'
-        #              f'but alse see visual observations and understand spatial relationships to avoid collisions.'
-        # },
-        # {
-        #     'role': 'user',
-        #     'content': question
-        # }]
+
         question = (
-            f'You are an autonomous navigation assistant. Your task is: {instruction}.'
+            f'You are an autonomous navigation assistant. Your task is: "{instruction}".\n'
             'There are your historical observations:' + interleaved_images + '\n'
             'Your current observation is: <|vision_start|><|image_pad|><|vision_end|>\n'
-            'Devise an action sequence to follow the instruction using the four actions: '
-            'TURN LEFT (←) or TURN RIGHT (→) by 15 degrees, MOVE FORWARD (↑) by 25 centimeters, or STOP.'
+            'Analyze the series of images to generate the next sequence of actions to follow '
+            'the instruction using the four actions: TURN LEFT (←) or TURN RIGHT (→) by 15 degrees, '
+            'MOVE FORWARD (↑) by 25 centimeters, or STOP if the task is completed.'
         )
             
         conversation=[

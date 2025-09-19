@@ -21,7 +21,7 @@ from habitat.config.default_structured_configs import (
     FogOfWarConfig,
     TopDownMapMeasurementConfig,
 )
-from habitat.utils.visualizations.utils import images_to_video, observations_to_image, overlay_frame
+from habitat.utils.visualizations.utils import images_to_video
 import torch.distributed as dist
 # add multi_model_eval directory to Python path
 projet_path = os.path.abspath(os.path.dirname(os.path.abspath(__file__)))

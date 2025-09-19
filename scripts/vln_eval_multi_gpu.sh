@@ -60,7 +60,7 @@ fi
 
 # --- Model Paths ---
 if [ "$AGENT_TYPE" == "qwen25vl" ]; then
-    CHECKPOINT="checkpoints/Qwen/Qwen2.5-VL-3B-Instruct"
+    CHECKPOINT="checkpoints/Qwen_lora"
 elif [ "$AGENT_TYPE" == "streamvln" ]; then
     CHECKPOINT="checkpoints/mengwei0427/StreamVLN_Video_qwen_1_5_r2r_rxr_envdrop_scalevln"
 else

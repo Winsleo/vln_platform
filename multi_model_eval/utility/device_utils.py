@@ -1,5 +1,4 @@
 import torch
-from collections.abc import Mapping, Sequence
 
 
 def move_to_device(obj, device):

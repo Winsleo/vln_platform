@@ -55,6 +55,7 @@ class BaseAgent(ABC):
         self.device = config.device
         self.model, self.processor = self.load_model_and_processor(config=config, *args, **kwargs)
 
+    @staticmethod
     @abstractmethod
     def load_model_and_processor(self, config: AgentConfig, **kwargs) -> Tuple[PreTrainedModel, BaseProcessor]:
         """Load model and processor, implemented by specific agents."""
