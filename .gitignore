@@ -37,7 +37,7 @@ Thumbs.db
 .dockerignore
 
 # 数据文件
-data/
+data
 *.h5
 *.hdf5
 *.pickle

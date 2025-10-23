@@ -206,6 +206,9 @@ class VLNEvaluator:
                         spls.append(res['spl'])
                         oss.append(res['os'])
                         ones.append(res['ne'])
+                        # Add collision metrics to maintain list consistency
+                        collision_counts.append(res.get('collisions', 0))
+                        collision_any.append(1 if res.get('collisions', 0) > 0 else 0)
         for scene in sorted(scene_episode_dict.keys()):
             episodes = scene_episode_dict[scene]
             scene_id = scene.split('/')[-2]
